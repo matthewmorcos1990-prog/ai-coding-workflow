@@ -130,6 +130,70 @@ _aiwf_fill_template() {
   print -r -- "$body"
 }
 
+_aiwf_maybe_escalate_g2_bypass() {
+  local repo_root="$1"
+  local issue_num="$2"
+
+  local registry="/Users/maximo/.openclaw/workspace-portfolio-cos/portfolio/registries/software_project_registry.json"
+  local notifier="/Users/maximo/.openclaw/workspace-portfolio-cos/portfolio/scripts/discord-post.sh"
+  local logger="/Users/maximo/.openclaw/workspace-portfolio-cos/portfolio/scripts/fury-log.sh"
+
+  [[ -f "$registry" ]] || return 0
+
+  local check_result
+  check_result=$(python3 - "$registry" "$repo_root" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+registry = Path(sys.argv[1])
+repo_root = Path(sys.argv[2])
+
+data = json.loads(registry.read_text(encoding="utf-8"))
+projects = data.get("projects", [])
+for p in projects:
+    p_repo = p.get("repo_path")
+    if not p_repo:
+        continue
+    try:
+        same = os.path.samefile(p_repo, repo_root)
+    except Exception:
+        same = False
+
+    if same:
+        mode = p.get("fury_gate_mode")
+        gate = p.get("gate")
+        pid = p.get("project_id", "unknown")
+        if mode == "G2_PLANNING_ONLY":
+            print(f"BYPASS\t{pid}\t{gate}\t{mode}")
+        else:
+            print(f"OK\t{pid}\t{gate}\t{mode}")
+        break
+else:
+    print("NONE\t\t\t")
+PY
+) || return 0
+
+  local state project_id gate mode
+  IFS=$'\t' read -r state project_id gate mode <<< "$check_result"
+
+  if [[ "$state" == "BYPASS" ]]; then
+    local msg="🚨 Fury bypass attempt detected: impl #$issue_num invoked for '$project_id' while gate=$gate mode=$mode (planning/canary only). Execution continued per owner policy; review required."
+
+    if [[ -x "$notifier" ]]; then
+      "$notifier" owner-approvals "$msg" "Fury Guard" >/dev/null 2>&1 || true
+      "$notifier" security-alerts "$msg" "Fury Guard" >/dev/null 2>&1 || true
+    fi
+
+    if [[ -x "$logger" ]]; then
+      "$logger" reporting "{\"project_id\":\"$project_id\",\"event\":\"g2_bypass_attempt\",\"issue\":\"$issue_num\",\"gate\":\"$gate\",\"mode\":\"$mode\",\"notified_channels\":[\"owner-approvals\",\"security-alerts\"]}" >/dev/null 2>&1 || true
+    fi
+
+    _aiwf_err "Bypass escalation sent (owner-approvals + security-alerts): $project_id issue #$issue_num"
+  fi
+}
+
 _aiwf_codex_exec() {
   local model="$1"
   local sandbox_mode="$2"
@@ -198,6 +262,7 @@ impl() {
   local repo_root
   repo_root=$(_aiwf_repo_root) || { _aiwf_err "Error: not in a git repo."; return 1; }
   _aiwf_require_clean_root "$repo_root" || return 1
+  _aiwf_maybe_escalate_g2_bypass "$repo_root" "$issue_num"
 
   local wt
   wt=$(_aiwf_worktree_for_issue "$repo_root" "$issue_num") || return 1
