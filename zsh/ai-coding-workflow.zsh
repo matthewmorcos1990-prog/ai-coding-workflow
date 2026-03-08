@@ -6,15 +6,35 @@ AIWF_DIR=${AIWF_DIR:-${${(%):-%N}:A:h}}
 AIWF_ROOT=${AIWF_ROOT:-${AIWF_DIR:h}}
 
 # Defaults
-: ${AIWF_CODEX_MODEL:=gpt-5.2}
+: ${AIWF_CODEX_MODEL:=gpt-5.3-codex}
+: ${AIWF_CODEX_ARCH_MODEL:=gpt-5.1-codex-max}
 : ${AIWF_ENFORCE_CLEAN_ROOT:=1}
 : ${AIWF_LINK_ENV_FILES:=1}
+: ${AIWF_ALLOWED_MODELS:="gpt-5.3-codex gpt-5.1-codex-max"}
 : ${CODEX_SKILLS_DIR:=$HOME/.codex/skills}
 
 _aiwf_err() { print -u2 -- "$*" }
 
 _aiwf_require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { _aiwf_err "Missing command: $1"; return 1; }
+}
+
+_aiwf_require_allowed_model() {
+  local model="$1"
+  local ok=1
+
+  for allowed in ${(z)AIWF_ALLOWED_MODELS}; do
+    if [[ "$model" == "$allowed" ]]; then
+      ok=0
+      break
+    fi
+  done
+
+  if [[ "$ok" -ne 0 ]]; then
+    _aiwf_err "Model '$model' is not in AIWF_ALLOWED_MODELS: $AIWF_ALLOWED_MODELS"
+    _aiwf_err "Set AIWF_CODEX_MODEL / AIWF_CODEX_ARCH_MODEL to a verified model before running."
+    return 1
+  fi
 }
 
 _aiwf_repo_root() {
@@ -110,6 +130,22 @@ _aiwf_fill_template() {
   print -r -- "$body"
 }
 
+_aiwf_codex_exec() {
+  local model="$1"
+  local sandbox_mode="$2"
+  local cwd="$3"
+  local prompt="$4"
+
+  _aiwf_require_allowed_model "$model" || return 1
+
+  codex exec \
+    --sandbox "$sandbox_mode" \
+    -m "$model" \
+    -c 'model_reasoning_effort="high"' \
+    -C "$cwd" \
+    "$prompt"
+}
+
 # --- Public commands ---
 
 prd() {
@@ -137,10 +173,7 @@ prd() {
 $final_prompt"
   fi
 
-  codex --search --enable collab --enable collaboration_modes \
-    --sandbox workspace-write --ask-for-approval on-request \
-    -m "$AIWF_CODEX_MODEL" -c 'model_reasoning_effort="high"' \
-    "$final_prompt"
+  _aiwf_codex_exec "$AIWF_CODEX_ARCH_MODEL" "workspace-write" "$repo_root" "$final_prompt"
 }
 
 impl() {
@@ -210,10 +243,57 @@ impl() {
 $orchestrator_prompt"
   fi
 
-  # NOTE: flags are intentionally explicit; adjust to your Codex CLI version.
-  ( cd "$repo_root" && codex --search \
-      --enable collab --enable collaboration_modes \
-      --dangerously-bypass-approvals-and-sandbox \
-      -m "$AIWF_CODEX_MODEL" -c 'reasoning.effort="high"' \
-      -C "$worktree_rel" "$final_prompt" )
+  ( cd "$repo_root" && _aiwf_codex_exec "$AIWF_CODEX_MODEL" "workspace-write" "$worktree_rel" "$final_prompt" )
+}
+
+investigate() {
+  local issue_num="$1"
+  shift || true
+  local user_prompt="$*"
+
+  if [[ -z "$issue_num" ]]; then
+    _aiwf_err "Usage: investigate <issue-number> [optional prompt]"
+    return 1
+  fi
+
+  _aiwf_require_cmd git || return 1
+  _aiwf_require_cmd gh || return 1
+  _aiwf_require_cmd codex || return 1
+
+  _aiwf_require_skill_file gh-issue-investigate || return 1
+
+  local repo_root
+  repo_root=$(_aiwf_repo_root) || { _aiwf_err "Error: not in a git repo."; return 1; }
+  _aiwf_require_clean_root "$repo_root" || return 1
+
+  local wt
+  wt=$(_aiwf_worktree_for_issue "$repo_root" "$issue_num") || return 1
+  local worktree_rel="${wt%%|*}"
+  local worktree_dir="${wt#*|}"
+
+  cd "$worktree_dir" || return 1
+  _aiwf_set_title "Investigate #$issue_num"
+
+  local investigate_prompt="You are a Red-Team Investigation Agent for GitHub issue #$issue_num.
+
+You MUST read and follow the investigation skill:
+- Skill name: gh-issue-investigate
+- File: ~/.codex/skills/gh-issue-investigate/SKILL.md
+
+Inputs:
+- Issue number: $issue_num
+- Worktree: $worktree_rel
+
+System of record:
+- Post investigation report as a comment on GitHub issue #$issue_num using gh.
+- Use prefix: [red-team investigator]"
+
+  if [[ -n "$user_prompt" ]]; then
+    investigate_prompt="$user_prompt
+
+$investigate_prompt"
+  fi
+
+  # Investigations must remain sandboxed.
+  ( cd "$repo_root" && _aiwf_codex_exec "$AIWF_CODEX_MODEL" "workspace-write" "$worktree_rel" "$investigate_prompt" )
 }

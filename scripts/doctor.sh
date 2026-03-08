@@ -37,6 +37,7 @@ skills=(
   epic-decompose
   requirements-clarity
   agent-learnings
+  gh-issue-investigate
 )
 
 for s in "${skills[@]}"; do

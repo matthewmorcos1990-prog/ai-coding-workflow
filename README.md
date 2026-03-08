@@ -1,47 +1,40 @@
 # Isolated-agent AI coding workflow
 
-My current AI coding workflow. Used with Codex CLI and GPT5.2 high-reasoning. 
+AI coding workflow using Codex CLI + GitHub issues with isolated worktrees.
 
-Core Principles 
-- Isolated agents for different responsibilities that are designed to critique each others work to deliver better solutions and isolated context to reduce bias and hallucinations. 
-- Automated workfow. The entire workflow is completely automated for AI-only dev teams. The only human input required is in PRD workflow to gather and brainstorm your requirements. I have made this process overly detailed to minimize the room for misunderstanding. 
-- Clear & Plain English: I actively work on 20-30 github issues concurrently with this workflow, so the agents communicate in clear and unambiguous english giving context and required information when they communicatewith you to avoid you needing to reference back to the GH issues. 
-- Isolated Woktrees to allow working in parralel. 
+## Core principles
+- Isolated agent responsibilities (Dev / QA / Merge / Investigate)
+- Deterministic issue-driven workflow
+- Clear, explicit acceptance criteria and evidence
+- Minimal context bleed between tasks
 
-Tools I use
-- Codex CLI
-- GH CLI 
-- Warp for terminal management 
-- CodeRabbit & Cubic.dev for CI code reviews
-- Ruff
-
-## The two commands
-This repo intentionally focuses on **only**:
-- `prd`: convert a vague idea into a decision-complete PRD/EPIC with specific use cases, requirements and acceptance criteria
-- `impl`: orchestrate agent launches sub agents: Dev → QA → Merge for a GitHub issue in an isolated worktree. Dev -> QA communicate and loop until all requirements and acceptance criteria are met. 
-
+## Commands
+This workflow exposes three commands:
+- `prd` — convert a vague idea into a decision-complete EPIC/PRD
+- `impl` — orchestrate Dev → QA → Merge for one task issue
+- `investigate` — run red-team investigation for one issue in sandbox mode
 
 ## Quickstart
-1) Install prerequisites
-- Zsh
-- `git`
-- `gh` (GitHub CLI)
-- `codex` CLI (or your agent runner)
+1. Install prerequisites (`git`, `gh`, `codex`, `zsh`)
+2. Install/link skills:
+   ```bash
+   ./scripts/install-skills.sh
+   ```
+3. Validate setup:
+   ```bash
+   ./scripts/doctor.sh
+   ```
+4. Source zsh commands in `~/.zshrc`:
+   ```bash
+   source /path/to/ai-coding-workflow/zsh/ai-coding-workflow.zsh
+   ```
 
-2) Install/link the skills
-```bash
-./scripts/install-skills.sh
-```
-
-3) (Optional) Validate setup
-```bash
-./scripts/doctor.sh
-```
-
-4) Source the Zsh commands (add to your `~/.zshrc`)
-```bash
-source /path/to/ai-coding-workflow/zsh/ai-coding-workflow.zsh
-```
+## Model + safety defaults
+- Command model allowlist:
+  - `gpt-5.3-codex`
+  - `gpt-5.1-codex-max`
+- Dangerous bypass mode is not used by default.
+- `impl` and `investigate` run in sandboxed workspace-write mode.
 
 ## Usage
 ### PRD
@@ -54,11 +47,15 @@ prd "Draft an EPIC for: add X, remove Y, and keep Z unchanged"
 impl 123 "Keep it minimal; prove it with E2E"
 ```
 
+### Red-team investigation
+```bash
+investigate 456 "Focus on auth boundary and RLS bypass attempts"
+```
 
-## What’s in here
-- `zsh/ai-coding-workflow.zsh`: the `prd` + `impl` commands
-- `prompts/`: the prompt templates those commands inject
-- `skills/`: the “skills” referenced by the prompts
+## Utility scripts
+- `scripts/install-skills.sh`
+- `scripts/doctor.sh`
+- `scripts/bootstrap-fury-labels.sh`
 
 ## Security
 This repo intentionally does **not** include secrets.
