@@ -99,13 +99,13 @@ _aiwf_worktree_for_issue() {
     git -C "$repo_root" fetch origin main >/dev/null 2>&1 || git -C "$repo_root" fetch origin >/dev/null 2>&1 || true
 
     if git -C "$repo_root" show-ref --verify --quiet "refs/heads/$branch_name"; then
-      git -C "$repo_root" worktree add "$worktree_dir" "$branch_name"
+      git -C "$repo_root" worktree add "$worktree_dir" "$branch_name" >/dev/null
     else
       local base_ref="origin/main"
       if ! git -C "$repo_root" show-ref --verify --quiet "refs/remotes/origin/main"; then
         base_ref="main"
       fi
-      git -C "$repo_root" worktree add -b "$branch_name" "$worktree_dir" "$base_ref"
+      git -C "$repo_root" worktree add -b "$branch_name" "$worktree_dir" "$base_ref" >/dev/null
     fi
   fi
 
